@@ -32,18 +32,18 @@ const (
 // TestServer 是一个 device plugin server
 type TestServer struct {
 	srv			*grpc.Server
-	device		map[string]*pluginapi.Device
+	devices		map[string]*pluginapi.Device
 	notify		chan bool
-	ctx			context.context
+	ctx			context.Context
 	cancel		context.CancelFunc
 	restartFlag	bool	//本次是否是重启
 }
 
 // NewTestServer 实例化 testServer
 func NewTestServer() *TestServer {
-	ctx, cancel := context.WithCancenl(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 	return &TestServer{
-		device:		make(map[string]*pluginapi.Device),
+		devices:		make(map[string]*pluginapi.Device),
 		srv:		grpc.NewServer(grpc.EmptyServerOption{}),
 		notify:		make(chan bool),
 		ctx:		ctx,
@@ -104,7 +104,7 @@ func (s *TestServer) Run() error {
 	}()
 
 	// Wait for server to start by lauching a blocking connection
-	conn, err := s.dial(testServer, 5*time.Second)
+	conn, err := s.dial(testSocket, 5*time.Second)
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func (s *TestServer) RegisterToKubelet() error {
 	req := &pluginapi.RegisterRequest{
 		Version:		pluginapi.Version,
 		Endpoint:		path.Base(DevicePluginPath + testSocket),
-		resourceName:	resourceName,
+		ResourceName:	resourceName,
 	}
 	log.Infof("Register to kubelet with endpoint %s", req.Endpoint)
 	_, err = client.Register(context.Background(), req)
@@ -158,7 +158,7 @@ func (s *TestServer) ListAndWatch(e *pluginapi.Empty, srv pluginapi.DevicePlugin
 		i++
 	}
 
-	err := srv.Send(&pluginapi.ListAndWatchResponse{Device: devs})
+	err := srv.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 	if err != nil {
 		log.Errorf("ListAndWatch send device error: %v", err)
 		return err
@@ -178,7 +178,7 @@ func (s *TestServer) ListAndWatch(e *pluginapi.Empty, srv pluginapi.DevicePlugin
 				i++
 			}
 			
-			srv.Send(&pluginapi.ListAndWatchResponse{Device: devs})
+			srv.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 
 		case <-s.ctx.Done():
 			log.Info("ListAndWatch exit")
@@ -197,7 +197,7 @@ func (s *TestServer) Allocate(ctx context.Context, reqs *pluginapi.AllocateReque
 		log.Infof("received request: %v", strings.Join(req.DevicesIDs, ","))
 		resp := pluginapi.ContainerAllocateResponse{
 			Envs: map[string]string{
-				"TEST_DEVICES": strings.Join(req.DeviceIDs, ","),
+				"TEST_DEVICES": strings.Join(req.DevicesIDs, ","),
 			},
 		}
 		resps.ContainerResponses = append(resps.ContainerResponses, &resp)
@@ -271,7 +271,7 @@ func (s *TestServer) watchDevice() error {
 					//删除文件，删除 device
 					delete(s.devices, event.Name)
 					s.notify <- true
-					log.Infoln("device deleted:", evnet.Name)
+					log.Infoln("device deleted:", event.Name)
 				}
 
 			case err, ok := <-w.Errors:
